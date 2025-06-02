@@ -1,0 +1,126 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'firebase_options.dart'; // Gera isso com o comando `flutterfire configure`
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await FirebaseAuth.instance.signInAnonymously();
+  runApp(const ChatApp());
+}
+
+class ChatApp extends StatelessWidget {
+  const ChatApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Chat Firebase',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
+        useMaterial3: true,
+      ),
+      home: const ChatScreen(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class ChatScreen extends StatefulWidget {
+  const ChatScreen({super.key});
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final DateFormat formatter = DateFormat('dd/MM HH:mm:ss');
+
+  void _sendMessage(String message) {
+    if (message.trim().isEmpty) return;
+
+    FirebaseFirestore.instance.collection('chat').add({
+      'message': message,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Chat Firebase')),
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chat')
+                  .orderBy('timestamp', descending: true)
+                  .limit(30)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return ListView.builder(
+                  reverse: true,
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final message = doc['message'] ?? '';
+                    final timestamp = doc['timestamp'] ?? 0;
+
+                    return ListTile(
+                      leading: Icon(Icons.message, color: Colors.indigo),
+                      title: Text(message),
+                      subtitle: Text(
+                        formatter.format(
+                          DateTime.fromMillisecondsSinceEpoch(timestamp),
+                        ),
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    onSubmitted: _sendMessage,
+                    decoration: const InputDecoration(
+                      hintText: 'Digite uma mensagem...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () => _sendMessage(_controller.text),
+                  color: Colors.indigo,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
